@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.reflect.demo" android:versionCode="1" android:versionName="0.1">
+  <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="29" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
+  <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+  <queries><provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" /></queries>
+  <application android:hasCode="false" android:extractNativeLibs="true" android:label="Reflect Demo">
+    <activity android:name="android.app.NativeActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden" android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+      <meta-data android:name="android.app.lib_name" android:value="reflect_demo" />
+      <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+    </activity>
+  </application>
+</manifest>

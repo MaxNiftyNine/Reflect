@@ -1,9 +1,10 @@
 """Compiles android-runtime/shaders/*.comp to SPIR-V headers (android-runtime/shaders/<name>.spv.h).
 
 The generated headers are checked in, so the runtime build does not need glslc.
-Usage: python tools/compile_shaders.py [path\\to\\glslc.exe]
+Usage: python tools/compile_shaders.py [path/to/glslc]
 """
 import glob
+from pathlib import Path
 import os
 import struct
 import subprocess
@@ -14,8 +15,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
-    glslc = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        os.path.expanduser("~"), "Android", "Sdk", "ndk", "27.3.13750724", "shader-tools", "windows-x86_64", "glslc.exe")
+    state = Path(os.environ.get("REFLECT_HOME", Path.home() / "Library/Application Support/Reflect"))
+    sdk = Path(os.environ.get("ANDROID_HOME", state / "sdk"))
+    glslc = sys.argv[1] if len(sys.argv) > 1 else str(sdk / "ndk/27.3.13750724/shader-tools/darwin-x86_64/glslc")
     for source in glob.glob(os.path.join(ROOT, "android-runtime", "shaders", "*.comp")):
         name = os.path.splitext(os.path.basename(source))[0]
         with tempfile.TemporaryDirectory() as temp:

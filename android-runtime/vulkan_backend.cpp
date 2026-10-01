@@ -20,6 +20,11 @@ bool ok(VkResult result, const char* operation) {
     __android_log_print(ANDROID_LOG_ERROR, "Refract.Vulkan", "%s failed: %d", operation, result);
     return false;
 }
+bool top_down_pixels() {
+    char value[PROP_VALUE_MAX]{};
+    __system_property_get("debug.refract.pixel_top_down", value);
+    return std::strcmp(value, "1") == 0;
+}
 }
 VkPhysicalDevice VulkanBackend::choose_device(VkInstance instance) {
     if (!instance) return VK_NULL_HANDLE;
@@ -481,7 +486,8 @@ int VulkanBackend::readback_async(const VulkanSwapchain* const swapchains[2], co
     cmd_ = slot.cmd;  // begin()/barrier() record into cmd_.
     bool recorded = begin();
     if (recorded) {
-        record_eye_copies(swapchains, indices, subimages, width, height, convert ? VK_NULL_HANDLE : slot.buffer, true);
+        record_eye_copies(swapchains, indices, subimages, width, height, convert ? VK_NULL_HANDLE : slot.buffer,
+                          !top_down_pixels());
         if (convert) {
             for (auto& scaled : scaled_)
                 barrier(scaled.image, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -539,6 +545,63 @@ bool VulkanBackend::ensure_atlas(uint32_t width, uint32_t height) {
         }
     }
     atlasWidth_ = width; atlasHeight_ = height;
+    return true;
+}
+bool VulkanBackend::readback_atlas(const AtlasBlit* blits, uint32_t count, uint32_t width, uint32_t height,
+                                 std::vector<uint8_t> rgba[2]) {
+    const uint64_t eyeBytes = uint64_t(width) * height * 4;
+    if (!refract::protocol::valid_render_extent(width, height) || eyeBytes * 2 > 128ull * 1024 * 1024 ||
+        !ensure_atlas(width, height) || !ensure_buffer(eyeBytes * 2) || !begin()) return false;
+    for (uint32_t t = 0; t < 2; ++t) {
+        barrier(atlas_[t].image, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                atlas_[t].initialized ? VK_ACCESS_TRANSFER_READ_BIT : 0, VK_ACCESS_TRANSFER_WRITE_BIT);
+        VkClearColorValue clear{};
+        VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdClearColorImage(cmd_, atlas_[t].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+        barrier(atlas_[t].image, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        const auto& b = blits[i];
+        const auto& sc = *b.swapchain;
+        const VkImageLayout home = sc.external ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        const uint32_t foreign = sc.external ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED;
+        const uint32_t own = sc.external ? queueFamily_ : VK_QUEUE_FAMILY_IGNORED;
+        barrier(sc.images[b.index], sc.layers, home, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                sc.external ? 0 : VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, foreign, own);
+        VkImageBlit region{};
+        region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, b.sub.imageArrayIndex, 1};
+        region.srcOffsets[0] = {b.sub.imageRect.offset.x, b.sub.imageRect.offset.y, 0};
+        region.srcOffsets[1] = {b.sub.imageRect.offset.x + b.sub.imageRect.extent.width,
+                               b.sub.imageRect.offset.y + b.sub.imageRect.extent.height, 1};
+        region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.dstOffsets[0] = {b.x, b.y, 0};
+        region.dstOffsets[1] = {b.x + b.width, b.y + b.height, 1};
+        vkCmdBlitImage(cmd_, sc.images[b.index], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, atlas_[b.texture].image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
+        barrier(sc.images[b.index], sc.layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, home, VK_ACCESS_TRANSFER_READ_BIT,
+                sc.external ? 0 : VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, own, foreign);
+    }
+    for (uint32_t t = 0; t < 2; ++t) {
+        barrier(atlas_[t].image, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+        VkBufferImageCopy copy{};
+        copy.bufferOffset = t * eyeBytes;
+        copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.imageExtent = {width, height, 1};
+        vkCmdCopyImageToBuffer(cmd_, atlas_[t].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer_, 1, &copy);
+        atlas_[t].initialized = true;
+    }
+    VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    host.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; host.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host.buffer = buffer_; host.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(cmd_, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &host, 0, nullptr);
+    if (!finish()) return false;
+    for (uint32_t t = 0; t < 2; ++t) {
+        rgba[t].resize(eyeBytes);
+        std::memcpy(rgba[t].data(), static_cast<const uint8_t*>(mapped_) + t * eyeBytes, eyeBytes);
+    }
     return true;
 }
 int VulkanBackend::export_atlas_async(const AtlasBlit* blits, uint32_t count, uint32_t width, uint32_t height) {
@@ -732,6 +795,7 @@ bool VulkanBackend::readback(const VulkanSwapchain* const swapchains[2], const u
         gpuExportEnabled_ = false;
         return readback(swapchains, indices, subimages, width, height, rgba);
     }
+    const bool topDown = top_down_pixels();
     for (uint32_t eye = 0; eye < 2; ++eye) {
         scaled_[eye].initialized = true;
         const auto& sub = *subimages[eye];
@@ -740,7 +804,7 @@ bool VulkanBackend::readback(const VulkanSwapchain* const swapchains[2], const u
         // AXRI v2 uses the GLES bottom-up row convention; Vulkan rows start at the top.
         for (uint32_t y = 0; y < h; ++y)
             std::memcpy(rgba[eye].data() + static_cast<size_t>(y) * w * 4,
-                        static_cast<const uint8_t*>(mapped_) + eye * eyeBytes + static_cast<size_t>(h - 1 - y) * w * 4, w * 4);
+                        static_cast<const uint8_t*>(mapped_) + eye * eyeBytes + static_cast<size_t>(topDown ? y : h - 1 - y) * w * 4, w * 4);
     }
     return true;
 }

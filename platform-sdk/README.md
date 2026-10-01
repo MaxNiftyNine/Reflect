@@ -1,6 +1,6 @@
 # Meta Platform SDK stand-in
 
-Lets unmodified Quest APKs initialise the Meta Platform SDK (`libovrplatformloader.so`) under Refract, so they no longer need OVRPort patching.
+Lets unmodified Quest APKs initialise the Meta Platform SDK (`libovrplatformloader.so`) under Reflect, so they no longer need OVRPort patching.
 
 ## How the game finds it
 
@@ -27,26 +27,26 @@ This APK is `com.oculus.horizon`. Its `EntryPoint` loads `librefract_ovrplatform
 
 | Property | Default |
 | --- | --- |
-| `owned.<package>` | unset. Only `1` makes the entitlement check succeed. `scripts/launch.ps1` sets it for each package in `scripts/owned_games.txt`. |
-| `user_id` | derived from the device's ANDROID_ID. `scripts/launch.ps1` sets it from `scripts/platform_user_id.txt` if that file exists. |
+| `owned.<package>` | Reflect sets this to `1` for every launched package. |
+| `user_id` | derived from the device's ANDROID_ID. |
 | `user_name` / `display_name` | `Refract` |
 | `access_token` | `Refract<user id>` |
-| `verbose` | `0`. `1` logs every resolved name and message (`launch.ps1 -PlatformVerbose`). |
+| `verbose` | `0`. `1` logs every resolved name and message. |
 | `mic_selftest` | `0`. `1` records 2 s through `ovr_Microphone_*` when a game loads the library and logs the levels. |
 
-`ovr_Microphone_*` captures 48 kHz mono float through AAudio from the default input. It needs the game's RECORD_AUDIO permission. On the emulator, that input is the Windows default recording device, and only when the emulator runs with `-allow-host-audio` (`start_emulator.ps1` passes it; `-NoHostMic` turns it off).
+`ovr_Microphone_*` captures 48 kHz mono float through AAudio from the Android device's default input. It needs the game's RECORD_AUDIO permission; Reflect grants requested runtime permissions during installation.
 
 In-app purchases and DLC are never granted: purchase lists are empty, and checkout and consume return errors.
 
 ## Build and install
 
-```powershell
-.\platform-sdk\build_apk.ps1 -Sdk C:\Users\mixid\Android\Sdk -Jdk 'C:\Program Files\Java\jdk-27'
-.\scripts\launch.ps1 -Run X -InstallPlatform
+```sh
+./reflect build
+./reflect install /path/to/game.apk
+./reflect run com.example.game
 ```
 
-Visibility: games that query `MAIN` intents, as Quest games do, see the package through its no-op `VisibilityActivity`. Other games need the `--force-queryable` install, which `-InstallPlatform` does; that lasts only until the next reboot.
-
-Unity's `OculusUnity.getIsOnOculusHardware()` also requires `Build.MANUFACTURER` to contain "oculus". Switch the emulator with `scripts\device_identity.ps1 -Identity quest` (or `google` for OVRPort-patched APKs).
+Reflect installs this compatibility APK automatically and configures its private
+emulator's Quest identity for Unity's Oculus plugin.
 
 Logcat tags: `Refract-OVRPlatform` (this library) and `OVRPlatform-Loader` (the game's loader).

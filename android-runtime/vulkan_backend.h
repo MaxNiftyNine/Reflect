@@ -100,6 +100,8 @@ public:
     // export_async for a composite frame (scene and panels): blits every region into a width x height
     // sRGB atlas pair, then exports that pair through the same ring; export_wait as usual.
     int export_atlas_async(const AtlasBlit* blits, uint32_t count, uint32_t width, uint32_t height);
+    bool readback_atlas(const AtlasBlit* blits, uint32_t count, uint32_t width, uint32_t height,
+                        std::vector<uint8_t> rgba[2]);
 private:
     // Takes the next export ring slot of `configuration` (width, height, two formats), records the
     // copies with `record(markerBuffer, marker)` (which must write the marker before the two export

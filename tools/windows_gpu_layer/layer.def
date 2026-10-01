@@ -1,4 +1,0 @@
-EXPORTS
-vkGetInstanceProcAddr
-vkGetDeviceProcAddr
-vkNegotiateLoaderLayerInterfaceVersion

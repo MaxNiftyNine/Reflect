@@ -654,7 +654,7 @@ public:
         const uint8_t* payload,
         uint64_t payloadSize,
         const refract::protocol::ImageProjection* projection = nullptr, bool gpu = false, uint32_t batchPart = 0,
-        bool waitAck = true)
+        bool waitAck = true, const std::vector<uint8_t>* table = nullptr)
     {
         static refract::protocol::PerfStats stats("image-send");
         // The async sender thread and synchronous GPU messages share the socket.
@@ -684,6 +684,10 @@ public:
             }
             if (gpu) header.type = refract::protocol::kWindowsGpuFrameType;
             header.header_size += sizeof(*projection);
+            if (table && !gpu) {
+                header.version = refract::protocol::kCompositePixelFrameVersion;
+                header.header_size += table->size();
+            }
         }
 
         // GPU messages are small: one write avoids three emulator/ADB wakeups.
@@ -697,6 +701,7 @@ public:
         } else {
             sent = send_all(&header, sizeof(header)) &&
                 (!projection || !directWindows_ || send_all(projection, sizeof(*projection))) &&
+                (!table || send_all(table->data(), table->size())) &&
                 send_all(payload, static_cast<size_t>(payloadSize));
         }
         if (!sent) {
@@ -955,7 +960,7 @@ class AsyncFrameSender {
 public:
     void submit(uint64_t sequence, uint32_t width, uint32_t height, uint32_t layers,
                 const std::vector<uint8_t>* const images, size_t imageBytes,
-                const refract::protocol::ImageProjection& projection)
+                const refract::protocol::ImageProjection& projection, const std::vector<uint8_t>& table = {})
     {
         Frame frame;
         frame.payload.resize(imageBytes * layers);
@@ -967,6 +972,7 @@ public:
         frame.height = height;
         frame.layers = layers;
         frame.projection = projection;
+        frame.table = table;
         push(std::move(frame));
     }
 
@@ -991,6 +997,7 @@ private:
 
     struct Frame {
         std::vector<uint8_t> payload;
+        std::vector<uint8_t> table;
         int slot = -1;  // >= 0: the pixels are in this readback slot, not in payload.
         bool nv12 = false;  // The slot holds a GPU-converted NV12 picture (video only).
         refract::protocol::ImageProjection projection{};
@@ -1050,7 +1057,7 @@ private:
             // debug.refract.video=h264 sends hardware-encoded H.264 instead of raw pixels.
             char mode[PROP_VALUE_MAX]{};
             __system_property_get("debug.refract.video", mode);
-            const bool encoded = std::strcmp(mode, "h264") == 0 && frame.layers == 2;
+            const bool encoded = std::strcmp(mode, "h264") == 0 && frame.layers == 2 && frame.table.empty();
             if (!encoded) video.close();
             const uint8_t* pixels = frame.payload.data();
             const size_t bytes = static_cast<size_t>(frame.width) * frame.height * 4 * frame.layers;
@@ -1064,7 +1071,7 @@ private:
                     frame.projection, image_transport_client().connected(), frame.nv12)) {
                 // Queued (or skipped with no viewer); drain() sends it.
             } else if (have && !frame.nv12 && image_transport_client().send_frame(frame.sequence, frame.width, frame.height, frame.layers,
-                    pixels, bytes, &frame.projection) && frame.sequence % 450 == 0) {
+                    pixels, bytes, &frame.projection, false, 0, true, frame.table.empty() ? nullptr : &frame.table) && frame.sequence % 450 == 0) {
                 __android_log_print(ANDROID_LOG_INFO, "Refract.Stereo", "sent seq=%llu %ux%u layers=%u (async, %llu dropped so far)",
                     static_cast<unsigned long long>(frame.sequence), frame.width, frame.height, frame.layers,
                     static_cast<unsigned long long>(dropped));
@@ -1262,11 +1269,14 @@ void maybe_send_swapchain_image(const SwapchainRecord& sc,
             ok = false;
             break;
         }
+        // GL readback starts with the bottom row. Reflect expects top-down images like the
+        // Vulkan pixel path; flipping in this GPU blit avoids a CPU copy of every row.
+        const bool topDown = int_property("debug.refract.pixel_top_down", 0, 0, 1) != 0;
         glBlitFramebuffer(
             sourceX,
-            sourceY,
+            sourceY + (topDown ? static_cast<GLint>(sourceHeight) : 0),
             sourceX + static_cast<GLint>(sourceWidth),
-            sourceY + static_cast<GLint>(sourceHeight),
+            sourceY + (topDown ? 0 : static_cast<GLint>(sourceHeight)),
             0,
             0,
             static_cast<GLint>(transportWidth),
@@ -1448,7 +1458,8 @@ bool submit_composite_frame(const XrFrameEndInfo& info, XrResult& result)
     // After a lost consumer nothing else reconnects for panel frames (the batch path needs export
     // on), so try here; a new connection turns shared export back on.
     if (g_gpuConsumerLost && image_transport_client().connected()) resume_gpu_export_if_reconnected();
-    if (!g_vulkan.gpu_export_enabled()) return false;
+    const bool pixelComposite = int_property("debug.refract.pixel_composite", 0, 0, 1) != 0;
+    if (!g_vulkan.gpu_export_enabled() && !pixelComposite) return false;
     const XrCompositionLayerProjection* scene = nullptr;
     std::vector<const XrCompositionLayerQuad*> quads;
     for (uint32_t i = 0; i < info.layerCount; ++i) {
@@ -1505,7 +1516,9 @@ bool submit_composite_frame(const XrFrameEndInfo& info, XrResult& result)
     if (!proto::valid_projection(projection)) return false;
 
     // Atlas: the scene at (0, 0) in both textures, panels packed to its right and below it.
-    constexpr uint32_t kPanelArea = 2048, kPad = 2, kMaxPanelSide = 2048;
+    const uint32_t kPanelArea = pixelComposite ? 1024 : 2048;
+    const uint32_t kMaxPanelSide = kPanelArea;
+    constexpr uint32_t kPad = 2;
     const uint32_t atlasWidth = sceneWidth + kPanelArea;
     const uint32_t atlasHeight = std::max(sceneHeight, kPanelArea);
     struct Panel {
@@ -1593,6 +1606,14 @@ bool submit_composite_frame(const XrFrameEndInfo& info, XrResult& result)
     std::memcpy(tableBytes.data(), &table, sizeof(table));
     if (!entries.empty()) std::memcpy(tableBytes.data() + sizeof(table), entries.data(), entries.size() * sizeof(proto::CompositeQuad));
 
+    if (pixelComposite) {
+        std::vector<uint8_t> rgba[2];
+        if (!g_vulkan.readback_atlas(blits.data(), static_cast<uint32_t>(blits.size()), atlasWidth, atlasHeight, rgba)) return false;
+        async_frame_sender().submit(g_imageFrameSequence++, atlasWidth, atlasHeight, 2, rgba,
+                                   uint64_t(atlasWidth) * atlasHeight * 4, projection, tableBytes);
+        result = XR_SUCCESS;
+        return true;
+    }
     resume_gpu_export_if_reconnected();
     // The ring pair about to be refilled carried the frame sent kExportRing - 1 frames ago.
     if (!image_transport_client().await_acks(VulkanBackend::kExportRing - 2)) { gpu_consumer_lost(); result = XR_SUCCESS; return true; }

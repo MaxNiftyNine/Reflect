@@ -1,28 +1,17 @@
 # Credits
 
-## AXRB
+Reflect is an Apple silicon command line fork of [Refract](https://github.com/MIXIDtheSilly/Refract)
+(MIXIDtheSilly), based on [AXRB](https://github.com/TheReal-Flo/AXRB)
+(Florian Reintgen). Its Android OpenXR runtime, loader services, platform compatibility
+service, and wire protocol are inherited from those projects. Their MIT copyright
+notices are retained in [LICENSE](LICENSE).
 
-Refract is based on [AXRB](https://github.com/TheReal-Flo/AXRB) (Android Extended
-Reality Bridge) by Florian Reintgen. Much of the code in this repository uses
-AXRB code: the Android OpenXR runtime, the runtime APK, the host bridge, the protocol,
-the tests and the launcher. That code was renamed and then extended in this repository.
-AXRB is MIT-licensed; its copyright notice is kept in [LICENSE](LICENSE).
+Reflect adds the Cocoa/Metal viewer, keyboard and mouse controls, Mac setup/build/install
+tools, OpenXR demo, and optional HTTP/S capture.
 
-## RiftLift
-
-The Meta native-SSO flow in [launcher/core/meta.mjs](launcher/core/meta.mjs)
-is adapted from [RiftLift](https://github.com/Villagers654/RiftLift) (GPL-3.0-or-later).
-Because of this, the launcher is distributed under GPL-3.0-or-later; see
-[launcher/LICENSE](launcher/LICENSE) and
-[launcher/THIRD_PARTY_NOTICES.md](launcher/THIRD_PARTY_NOTICES.md).
-
-## Other references
-
-- [OpenXR](https://www.khronos.org/openxr/): OpenXR structure and extension declarations
-  (Khronos, Apache-2.0 OR MIT).
-- [OculusGraphQLApiLib](https://github.com/ComputerElite/OculusGraphQLApiLib): API research
-  for the launcher's store integration. No code from it is bundled.
-- [Berberis](https://android.googlesource.com/platform/frameworks/libs/binary_translation/)
-  (AOSP) and Digitalis (Apache-2.0): the ARM64-to-x86_64 translator. Its prebuilt binaries are
-  redistributed in [prebuilts/digitalis/](prebuilts/digitalis/) (see its NOTICE), and the
-  patches in [tools/translator/](tools/translator/) target it.
+The downloaded [Khronos Android OpenXR loader](https://github.com/KhronosGroup/OpenXR-SDK-Source)
+is licensed under Apache 2.0. Its license is retained in the downloaded AAR at
+`META-INF/LICENSE` and copied into standalone packages by `python3 -m macos.package`.
+OpenXR declarations retain their source notices. Optional HTTP capture uses
+[mitmproxy](https://github.com/mitmproxy/mitmproxy), an MIT-licensed dependency installed
+separately by `./reflect network-setup`.

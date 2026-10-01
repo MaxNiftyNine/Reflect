@@ -123,6 +123,9 @@ inline bool valid_quads(const ImageProjection& composition) {
 // can draw each panel where the app placed it. Payload: WindowsGpuFrame, CompositeHeader,
 // then quad_count CompositeQuads in the app's layer order (back to front).
 constexpr uint16_t kCompositeGpuFrameVersion = 10;
+// Reflect's pixel atlas: ImageProjection and the composite table are in the header,
+// followed by two top-down RGBA atlas images in the payload.
+constexpr uint16_t kCompositePixelFrameVersion = 11;
 constexpr uint32_t kMaxCompositeQuads = 15;
 struct CompositeHeader {
     uint32_t scene_width = 0, scene_height = 0;  // Zero: no scene layer (panels over black).

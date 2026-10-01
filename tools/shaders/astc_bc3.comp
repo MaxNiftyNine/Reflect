@@ -1,6 +1,6 @@
 // ASTC LDR -> BC3 on the GPU, for vulkan_texture_transcoder.h. A port of astc_decode.h (decode) and
 // texture_transcode.h (encode_bc3); tools/gen_astc_bc3_shader.py adds the BC1 single-colour tables and compiles it
-// to tools/astc_bc3_spirv.h.
+// to macos/vulkan-compat/astc_bc3_spirv.h.
 //
 // One workgroup per 16x16-texel tile of one slice: the (up to 4x4) ASTC blocks under the tile are parsed into shared
 // memory, every thread decodes one texel, then 16 threads encode the tile's 4x4 BC3 blocks. Texels past the region

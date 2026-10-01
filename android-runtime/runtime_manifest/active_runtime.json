@@ -1,7 +1,0 @@
-{
-  "file_format_version": "1.0.0",
-  "runtime": {
-    "name": "Android XR Bridge Runtime",
-    "library_path": "libopenxr_runtime.so"
-  }
-}

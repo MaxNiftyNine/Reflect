@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""Reflect: Android OpenXR apps in a window on Apple silicon."""
+from macos.cli import main
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,3 @@
 * text=auto
 *.sh text eol=lf
 *.S text eol=lf
-prebuilts/** -text

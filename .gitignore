@@ -1,16 +1,15 @@
-# Build outputs
+# Generated builds and downloaded dependencies
 build/
 build-*/
-out/
 dist/
+out/
+third_party/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-CTestTestfile.cmake
-DartConfiguration.tcl
 
-# Generated Android artifacts
+# Android artifacts and signing keys
 *.apk
 *.idsig
 *.aab
@@ -21,52 +20,31 @@ DartConfiguration.tcl
 *.so
 *.a
 
-# Vendored dependencies and SDK checkouts
-third_party/
-
-# Runtime logs and local traces
+# Captured traffic, logs, emulator files and local data
+*.mitm
+*.har
+*.pcap
+*.pcapng
 *.log
 *.trace
 *.tombstone
-refract-windows-bridge.*.log
+/log.txt
+/captures/
+/runs/
+*.qcow2
+*.img
+*.pem
+*.key
 
-# IDE/editor state
-.vs/
+# Python, editors, OS and temporary files
+__pycache__/
+*.pyc
+.venv/
 .vscode/
 .idea/
-*.user
-*.suo
-*.pdb
-*.ilk
-*.obj
-*.VC.db
-*.VC.VC.opendb
-
-# OS noise
-Thumbs.db
-Desktop.ini
 .DS_Store
-
-# Temporary files
-__pycache__/
-launcher/node_modules/
-launcher/dist/
-launcher/dist-preview/
-launcher/src-tauri/target/
-launcher/src-tauri/gen/
 *.tmp
 *.temp
 *.bak
 *.swp
 *~
-
-# Local run output and machine-specific files
-/runs/
-/scripts/owned_games.txt
-/scripts/platform_user_id.txt
-/scripts/stubs/
-/tools/translator/backups/
-/tools/probes/**/*.exe
-/tools/probes/mic_probe/mic_probe
-/prebuilts/digitalis/*.before-*
-!/prebuilts/**/*.so

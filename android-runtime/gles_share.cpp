@@ -124,7 +124,10 @@ void GlesShare::configure(const XrGraphicsBindingOpenGLESAndroidKHR& binding, Vu
     display_ = binding.display;
     config_ = binding.config;
     appContext_ = binding.context;
-    configured_ = display_ != EGL_NO_DISPLAY && appContext_ != EGL_NO_CONTEXT;
+    // Reflect's Apple GPU emulator can render the EGL image while its Vulkan AHardwareBuffer
+    // import reads black. Use the existing GL pixel path when the host requests it.
+    configured_ = display_ != EGL_NO_DISPLAY && appContext_ != EGL_NO_CONTEXT &&
+        !property_is("debug.refract.gles_readback", "1");
     __android_log_print(ANDROID_LOG_INFO, kTag, "GLES session: display=%p config=%p context=%p", display_, config_, appContext_);
 }
 
